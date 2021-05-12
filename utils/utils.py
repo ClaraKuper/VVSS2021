@@ -1,7 +1,7 @@
 # import libraries
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+import scipy.stats as stats
 
 
 def split_df(df, split_col, split_vals):
@@ -15,83 +15,110 @@ def split_df(df, split_col, split_vals):
     return [df[df[split_col] == n] for n in split_vals]
 
 
-
-def make_summary_plot(df, g_cm, s_cm, c_cm):
+def get_pH(max_sample, min_sample, attacker, width):
     """
-    Creates a large plot summarizing behaviour in the experiment
-    :param c_cm: color map for correct/incorrect answers
-    :param s_cm: color map for subjects
-    :param g_cm: color map for go/no-go
-    :param df: data frame to be visualized. Needs the columns "subject", "goResp", "reaTime", "hitGoal"
-    :return: figure and axis to reproduce plots for figure
+    Normalizes the upper and lower bounds to compute how likely the attacker is to hit the goal, given the distance
+    between attacker and all known points of the goal
+
+    input:
+    :param max_sample: the largest sampled y position (in dva)
+    :param min_sample: the smallest sampled y position (in dva)
+    :param attacker: the y position of the attacker (in dva)
+    :param width: the span that is covered by the full goal (in dva)
+
+    other units are possible, but they need to be identical for all input parameters.
+
+    :return p_in: the probability that the attacker is inside the goal (value between 0 and 1)
+
     """
 
-    observers = np.unique(df.subject)
+    # part 1: normalize the values to be aligned with the mean of the known goal, and to have positive values
+    # if upper known equals lower known, everything will be normalized to the position of the sample
+    mean_sample = (max_sample + min_sample) / 2
 
-    # combined figure for visualization in notebook
-    fig_description, axs_description = plt.subplots(1, 3, figsize=(20, 5))
+    # this is equal to the lower normalized goal
+    upper_norm = abs(max_sample - mean_sample)
+    attacker_norm = abs(attacker - mean_sample)
 
-    # set labels on combined figure
-    # the first panel will be a graph of the number of go vs. no-go responses
-    axs_description[0].set_title('Response frequencies')
-    # the second panel will show the distribution of response times
-    axs_description[1].set_title('Response times')
-    # the third panel will show the proportion correct trial by condition
-    axs_description[2].set_title('Performance')
+    # part 2: compute the covered and the unknown size of the goal
+    covered_width = abs(max_sample - min_sample)
+    free_width = width - covered_width
 
-    # plot panel 1
-    # group by subject and go Response
-    summary_a_bSG = df.groupby(['subject', 'goResp']).describe().answer
-    # retrieve the count information from the summary
-    go_count = summary_a_bSG.loc[((slice(observers[0], observers[-1])), [1]), :]['count'].values
-    # flip one information
-    nogo_count = -1 * summary_a_bSG.loc[((slice(observers[0], observers[-1])), [0]), :]['count'].values
+    # part 3: compute the probability that the attacker hits inside the goal
+    p_in = 1 - stats.uniform.cdf(attacker_norm, loc=upper_norm, scale=free_width)
 
-    # plot everything
-    axs_description[0].bar(observers, go_count, color=g_cm(np.linspace(0.2, 0.8, 2)[1]), label='go')
-    axs_description[0].bar(observers, nogo_count, color=g_cm(np.linspace(0.2, 0.8, 2)[0]), label='no go')
+    return p_in
 
-    # Use absolute value for y-ticks
-    ticks = axs_description[0].get_yticks()
-    axs_description[0].set_yticklabels([np.round(int(abs(tick)) / (3 * 800), 1) for tick in ticks]);
 
-    # add labels
-    axs_description[0].set_ylabel('proportion of responses')
-    axs_description[0].set_xlabel('observer')
-    axs_description[0].legend(title='response', loc='upper right')
+def strategy_single(sample: float, attacker: float, width=8):
+    """
+    :param sample: the position of a single sample (float)
+    :param attacker: the position of the attacker (float)
+    :param width: the width of the goal, defaults to 8
+    :return: the response (1 for go, 0 for no-go)
+    """
+    return int(get_pH(sample, sample, attacker, width) > 0.5)
 
-    # plot panel 2
-    # collect reaction times in a list of lists
-    rts = [df[df.subject == s].rea_time.values for s in np.unique(df.subject)]
-    axs_description[1].hist(rts, stacked=True, color=s_cm, label=observers)
 
-    for s, c in zip(np.unique(df.subject), s_cm):
-        axs_description[1].axvline(x=np.mean(df[df.subject == s].rea_time), color=c)
-        #axs_rts.axvline(x=np.mean(df[df.subject == s].rea_time), color=c)
+def strategy_mean(samples, attacker: float, width=8):
+    """
+    :param samples: the positions of all observed samples (np array)
+    :param attacker: the position of the attacker (float)
+    :param width: the width of the goal (defaults to 8)
+    :return: the response (1 for go, 0 for no-go)
+    """
+    pH_all = [get_pH(s, s, attacker, width) for s in samples]
+    return int(np.mean(pH_all) > 0.5)
 
-    axs_description[1].legend(title='observer', loc='upper right')
 
-    axs_description[1].set_xlabel('reaction time [s]')
-    axs_description[1].set_ylabel('# responses')
+def strategy_accumulated(samples, attacker, width=8):
+    """
+    :param samples: the positions of all observed samples (np array)
+    :param attacker: the position of the attacker (float)
+    :param width: the width of the goal (defaults to 8)
+    :return: the response (1 for go, 0 for no-go)
+    """
+    return int(get_pH(min(samples), max(samples), attacker, width) > 0.5)
 
-    # axs_rts.legend(title='observer', loc='lower left')
-    # axs_rts.set_xlabel('reaction time [s]')
-    # axs_rts.set_ylabel('# responses')
 
-    # plot panel 3
-    summary_a_bSH = df.groupby(['subject', 'hitGoal']).describe().answer
-    # for every subject and trial type
-    axs_description[2].scatter(observers,
-                               summary_a_bSH.loc[((slice(observers[0], observers[-1])), [1]), :]['mean'].values,
-                               label='hit', color=c_cm(np.linspace(0.2, 0.8, 2))[1])
-    axs_description[2].scatter(observers,
-                               summary_a_bSH.loc[((slice(observers[0], observers[-1])), [0]), :]['mean'].values,
-                               label='pass', color=c_cm(np.linspace(0.2, 0.8, 2))[0])
-    axs_description[2].set_xlabel('observer')
-    axs_description[2].set_ylabel('proportion correct')
-    axs_description[2].legend(title='trial type', loc='lower right')
+def predict_responses(trials, strategy: str, samples: int):
+    """
+    :param trials: list with the data from all trials
+    :param strategy: a string indicating the strategy used to make a decision
+    :param samples: the number of samples taken into account for the response
+    :return: array of responses (1 for go, 0 for no-go) with the same length as "trials"
+    """
 
-    plt.tight_layout()
+    # extract the sample position relative to the attacker
+    sample_positions = [t.samplePosDegAtt.values[:samples] for t in trials]
+    # since the sample is relative to the attacker, the attacker position is "0"
+    attacker_position = 0
 
-    return fig_description, axs_description
+    # choose the correct strategy and get the responses
+    if strategy == 'individual' or strategy == 'i':
+        return [strategy_single(s[-1], attacker_position) for s in sample_positions]
+    elif strategy == 'mean' or strategy == 'm':
+        return [strategy_mean(s, attacker_position) for s in sample_positions]
+    elif strategy == 'accumulated' or strategy == 'a':
+        return [strategy_accumulated(s, attacker_position) for s in sample_positions]
+    elif strategy == 'all':
+        return [[strategy_single(s[-1], attacker_position) for s in sample_positions],
+                [strategy_mean(s, attacker_position) for s in sample_positions],
+                [strategy_accumulated(s, attacker_position) for s in sample_positions]]
+    else:
+        raise AttributeError(f"{strategy} is invalid. Please use 'individual' | 'i', 'mean'|'m', 'accumulated'|'a' or 'all'")
 
+
+def get_performance(responses, conditions):
+    """
+    :param responses: an array that holds all the responses (0 no-go, 1 go)
+    :param conditions: an array that holds the corresponding ground truth (0 pass, 1 hit )
+    :return:
+    """
+
+    if len(responses) == len(conditions):
+        response_correct = 1-abs(responses - conditions)
+        return np.mean(response_correct)
+    else:
+        raise ValueError(f"responses and condition need to be of the same length but are of length {len(responses)} "
+                         f"and {len(conditions)}")
