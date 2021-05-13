@@ -6,9 +6,11 @@ import scipy.stats as stats
 
 def split_df(df, split_col, split_vals):
     """
+    takes a data frame and splits is according to the values in the specified column, the number of returned data frames
+    will be equal to the number of passed split values
     :param df: the data frame that shall be splitted
     :param split_col: defines the column by which the dataframe should be splitted
-    :param split_vals: defines the values that will go in each df
+    :param split_vals: defines the values that will go in each df. needs to be categorical.
     :return: a list of the generated datasets
     """
 
@@ -52,6 +54,7 @@ def get_pH(max_sample, min_sample, attacker, width):
 
 def strategy_single(sample: float, attacker: float, width=8):
     """
+    computes the probability of a hit based on a single sample and returns if the value is above or below 0.5
     :param sample: the position of a single sample (float)
     :param attacker: the position of the attacker (float)
     :param width: the width of the goal, defaults to 8
@@ -62,6 +65,7 @@ def strategy_single(sample: float, attacker: float, width=8):
 
 def strategy_mean(samples, attacker: float, width=8):
     """
+    computes the probability of a hit with mean samples and returns if the value is above or below 0.5
     :param samples: the positions of all observed samples (np array)
     :param attacker: the position of the attacker (float)
     :param width: the width of the goal (defaults to 8)
@@ -73,6 +77,7 @@ def strategy_mean(samples, attacker: float, width=8):
 
 def strategy_accumulated(samples, attacker, width=8):
     """
+    computes the probability of a hit with accumulated samples and returns if the value is above or below 0.5
     :param samples: the positions of all observed samples (np array)
     :param attacker: the position of the attacker (float)
     :param width: the width of the goal (defaults to 8)
@@ -83,6 +88,7 @@ def strategy_accumulated(samples, attacker, width=8):
 
 def predict_responses(trials, strategy: str, samples: int):
     """
+    returns an array with the predicted response category, based on the defined strategy
     :param trials: list with the data from all trials
     :param strategy: a string indicating the strategy used to make a decision
     :param samples: the number of samples taken into account for the response
@@ -111,6 +117,7 @@ def predict_responses(trials, strategy: str, samples: int):
 
 def get_performance(responses, conditions):
     """
+    computes the proportion correct answers based on the response and the ground truth
     :param responses: an array that holds all the responses (0 no-go, 1 go)
     :param conditions: an array that holds the corresponding ground truth (0 pass, 1 hit )
     :return:
@@ -122,3 +129,41 @@ def get_performance(responses, conditions):
     else:
         raise ValueError(f"responses and condition need to be of the same length but are of length {len(responses)} "
                          f"and {len(conditions)}")
+
+
+def normalize_df(dataframe, columns):
+    """
+    normalized all columns passed to zero mean and unit variance, returns a full data set
+    :param dataframe: the dataframe to normalize
+    :param columns: all columns in the df that should be normalized
+    :return: the data, centered around 0 and divided by it's standard deviation
+    """
+
+    for column in columns:
+
+        data = dataframe.loc[:, column].values
+
+        sd = np.std(data)
+        mean = np.mean(data)
+
+        dataframe.loc[:, column] = (data - mean) / sd
+
+    return dataframe
+
+
+df_long = pd.read_csv('./data/dataframe_long.csv')
+df_short = pd.read_csv('./data/dataframe_short.csv')
+trials = [df_long[df_long.indTrial == t] for t in np.unique(df_long.indTrial)]
+samples = np.unique(df_long.sampleID)
+
+# make a data frame to collect the performance
+strategy_performance = pd.DataFrame(index=['individual', 'mean', 'accumulated'], columns=samples)
+
+# get the performance for 1-6 samples shown
+for sample in samples:
+    responses = predict_responses(trials, 'all', sample)
+    strategy_performance.loc['individual', sample] = get_performance(responses[0], df_short.hitGoal.values)
+    strategy_performance.loc['mean', sample] = get_performance(responses[1], df_short.hitGoal.values)
+    strategy_performance.loc['accumulated', sample] = get_performance(responses[2], df_short.hitGoal.values)
+
+print(strategy_performance)

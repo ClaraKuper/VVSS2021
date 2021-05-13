@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sb
 
 
 def make_summary_plot(df, cmap):
@@ -79,3 +80,43 @@ def make_summary_plot(df, cmap):
 
     return rts, performance_hit, performance_pass, observers
 
+
+def get_interaction(data, columns):
+    if len(columns) > 2:
+        raise ValueError('3-way-interactions are not supported by this method.')
+    else:
+        return data[columns[0]] * data[columns[1]]
+
+
+def plot_prediction_comparison(data, model):
+    """
+    creates a plot with one panel per sample, the estimates made by the model and the
+    estimates made for this time window individually
+    :param model: the fitted model
+    :param data: the data that the model was fitted on
+    :return: nothing
+    """
+
+    samples = np.unique(data.sampleID)
+
+    fig, axs = plt.subplots(1, len(samples), figsize=(20, 5), sharex='all', sharey='all')
+
+    # check if the model has an interaction term and generate if needed
+    for i in model.coefs.index:
+        if not i in data.columns:
+            if ':' in i:
+                data[i] = get_interaction(data, i.split(':'))
+
+    for s in samples:
+        # subset the dataset
+        dat = data[data.sampleID == s].reset_index(drop=True)
+        # get a prediction of the responses
+        dat['predicted'] = model.predict(dat)
+
+        # plot on the same axis
+        sb.regplot(x=dat.sampleProbHit, y=dat.predicted, order=2, ax=axs[s - 1], line_kws={'color': 'green'},
+                   scatter_kws={'color': 'grey'})
+        sb.regplot(x=dat.sampleProbHit, y=dat.goResp, order=2, ax=axs[s - 1], line_kws={'color': 'blue'},
+                   scatter_kws={'color': 'grey'})
+
+    return None
