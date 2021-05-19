@@ -3,6 +3,12 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 
+# some basic variables for testing
+df_long = pd.read_csv('./data/dataframe_long.csv')
+df_short = pd.read_csv('./data/dataframe_short.csv')
+trials = [df_long[df_long.indTrial == t] for t in np.unique(df_long.indTrial)]
+samples = np.unique(df_long.sampleID)
+
 
 def split_df(df, split_col, split_vals):
     """
@@ -151,19 +157,41 @@ def normalize_df(dataframe, columns):
     return dataframe
 
 
-df_long = pd.read_csv('./data/dataframe_long.csv')
-df_short = pd.read_csv('./data/dataframe_short.csv')
-trials = [df_long[df_long.indTrial == t] for t in np.unique(df_long.indTrial)]
-samples = np.unique(df_long.sampleID)
+def predict_lm_response(estimates, predictor, data, sigmoid=True):
+    """
+    Gets a response prediction for the linear regression model for response types
+    :param estimates: the coefficients estimated by the model
+    :param predictor: the column name that will be used to compute the prediction
+    :param data:  the data frame
+    :param sigmoid:  if the prediction should additionally be passed through a sigmoid function (normalized between 0 and 1)
+    :return: the predicted response probability (either as sigmoid or as ln odds)
+    """
+    b_0 = estimates.loc['(Intercept)', 'Estimate']
+    b_1 = estimates.loc[predictor, 'Estimate']
+    b_2 = estimates.loc['hitGoal', 'Estimate']
 
-# make a data frame to collect the performance
-strategy_performance = pd.DataFrame(index=['individual', 'mean', 'accumulated'], columns=samples)
+    ln_odds = b_0 + b_1 * data[predictor] + b_2 * data['hitGoal']
+    if sigmoid:
+        prediction = 1 / (1 + np.exp(-ln_odds.values))
+    else:
+        prediction = ln_odds
 
-# get the performance for 1-6 samples shown
-for sample in samples:
-    responses = predict_responses(trials, 'all', sample)
-    strategy_performance.loc['individual', sample] = get_performance(responses[0], df_short.hitGoal.values)
-    strategy_performance.loc['mean', sample] = get_performance(responses[1], df_short.hitGoal.values)
-    strategy_performance.loc['accumulated', sample] = get_performance(responses[2], df_short.hitGoal.values)
+    return prediction
 
-print(strategy_performance)
+
+def get_filled_vec(data, fillcol, group):
+    """
+
+    :param data:
+    :param fillcol:
+    :param group:
+    :return:
+    """
+
+    for g in np.unique(data[group]):
+        g_rt = np.nanmean(data.loc[data[group] == g, fillcol])
+        idx = np.where((data[group] == g) & (data['goResp'] == 0))[0]
+
+        data.loc[idx, fillcol] = g_rt
+
+    return data[fillcol]
