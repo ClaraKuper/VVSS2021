@@ -49,7 +49,7 @@ def make_summary_plot(data, cmaps=colormaps, sizes=fig_sizes):
     """
 
     # initialize the figure
-    fig, axs = plt.subplots(1, 3, figsize=(sizes['width'] * 2, sizes['height'] / 2))
+    fig, axs = plt.subplots(1, 3, figsize=(sizes['width'] * 3, sizes['height']))
 
     obs = np.unique(data.subject)
 
@@ -82,12 +82,15 @@ def make_summary_plot(data, cmaps=colormaps, sizes=fig_sizes):
     axs[0].set_xlabel('observer')
     axs[0].legend(title='response', loc='upper right')
 
+    subjects = np.unique(data.subject)
+    s_cm = cmaps['s_cm'](np.linspace(0,1,len(subjects)))
+
     # plot panel 2
     # collect reaction times in a list of lists
     rts = [data[data.subject == s].rea_time.values for s in np.unique(data.subject)]
-    axs[1].hist(rts, stacked=True, color=cmaps['s_cm'], label=obs)
+    axs[1].hist(rts, stacked=True, color=s_cm, label=obs)
 
-    for s, c in zip(np.unique(data.subject), cmaps['s_cm']):
+    for s, c in zip(subjects, s_cm):
         axs[1].axvline(x=np.mean(data[data.subject == s].rea_time), color=c)
 
     axs[1].legend(title='observer', loc='upper right')
@@ -124,11 +127,12 @@ def VVSS_fig1_plot(data, rts, obs, cmaps=colormaps, sizes=fig_sizes):
     """
     fig, axs = plt.subplots(1, 1, figsize=(sizes['width'] * 1.3, sizes['height'] * 1.3))
 
+    s_cm = colormaps['s_cm'](np.linspace(0, 1, len(obs)))
     # make a histogram of the reaction times, stacked by subject
-    axs.hist(rts, stacked=True, color=cmaps['s_cm'], label=obs)
+    axs.hist(rts, stacked=True, color=s_cm, label=obs)
 
     # draw a line at the mean
-    for s, c in zip(obs, cmaps['s_cm']):
+    for s, c in zip(obs, s_cm):
         axs.axvline(x=np.mean(data[data.subject == s].rea_time), color=c)
 
     # set the labels
@@ -284,7 +288,7 @@ def plot_prediction_comparison(data, model, var, order=2, sizes=fig_sizes):
 
     samples = np.unique(data.sampleID)
 
-    fig, axs = plt.subplots(1, len(samples), figsize=(sizes['width'] * 2, sizes['height'] / 2), sharex='all',
+    fig, axs = plt.subplots(1, len(samples), figsize=(sizes['width'] * len(samples), sizes['height']), sharex='all',
                             sharey='all')
 
     # check if the model has an interaction term and generate if needed
@@ -309,6 +313,15 @@ def plot_prediction_comparison(data, model, var, order=2, sizes=fig_sizes):
 
 
 def VVSS2021_fig3_plot(data, model, sizes=fig_sizes, cmaps=colormaps):
+    """
+
+    :param data:
+    :param model:
+    :param sizes:
+    :param cmaps:
+    :return:
+    """
+
     fig_pass, axs_pass = plt.subplots(1, 1, figsize=(sizes['width'], sizes['height']))
     fig_hit, axs_hit = plt.subplots(1, 1, figsize=(sizes['width'], sizes['height']))
     # combine the axis in one array
@@ -533,3 +546,163 @@ def make_update_response_plot(data, ntbin, npbin, save=True, sizes=fig_sizes, cm
         fig.savefig(path_figs + "Fig5ResponseByUpdate.pdf", bbox_inches='tight')
 
     return changes_list_fw, changes_list_bw
+
+
+def compare_ddm_to_data(data, m1, m2, m3, sizes=fig_sizes, cmaps=colormaps):
+    fig, axs = plt.subplots(4, 4, figsize=(sizes['width'] * 4, sizes['height'] * 4), sharex='row', sharey='row')
+
+    VSS2021_fig1, axs_predictionW1 = plt.subplots(1, 3, figsize=(sizes['width'] * 3 * 0.8, sizes['height'] * 0.8),
+                                                  sharex='all', sharey='all')
+    VSS2021_fig2, axs_predictionW2 = plt.subplots(1, 3, figsize=(sizes['width'] * 3 * 0.8, sizes['height'] * 0.8),
+                                                  sharex='all', sharey='all')
+
+    # define the bins for count plots
+    bins = np.linspace(0, 1, 20)
+
+    # define response types
+    responses = ['CORRECT REJECTION', 'FALSE ALARM', 'MISS', 'HIT']
+
+    # define probability windows
+    n_pwins = 10
+    window_prob = np.linspace(min(data.sampleAccprobHit_01), max(data.sampleAccprobHit_01), n_pwins)
+
+    for m_id, m_df in enumerate([m1.loc[data.index, :], m2.loc[data.index, :], m3.loc[data.index, :], data]):
+
+        # first plot: distribution correct & incorrect reaction times
+        # filter correct and incorrect reaction times
+        RTs_c = m_df[m_df.answer == 1].rea_time
+        RTs_i = m_df[m_df.answer == 0].rea_time
+
+        axs[0, m_id].hist([RTs_c[~np.isnan(RTs_c)], RTs_i[~np.isnan(RTs_i)]], bins=bins, stacked=True,
+                         color=cmaps['p_cm']([0.8, 0.2]), label=['correct', 'false'])  # bins = bins
+        #
+
+        # second plot: mean hit probabilities before each response
+        # initialize data frames
+        value_respcat_fw = pd.DataFrame()
+
+        # time information relative to go response
+        for timewin in range(1, 7):
+
+            time_col = 'sampleAccprobHit_0{}'.format(timewin)
+
+            # loop through response categories
+            for respcat in responses:
+                # get mean probability for category and time value
+                value_respcat_fw.loc[respcat, timewin] = (np.mean(
+                    m_df.loc[m_df.response_cat == respcat, time_col]) / 2) + 0.5
+
+        # plot
+        for row, c in zip(responses, cmaps['c_cm'](np.linspace(0, 1, len(responses)))):
+            axs[1, m_id].plot(range(1, 7), value_respcat_fw.loc[row, :], label=row.lower(), color=c)
+
+        # third plot: reproduce the decision after evidence pattern
+        # translate df into long data frame
+
+        # in order to match the trials later, we want an ID
+        m_df['ids'] = m_df.index
+        # melt the data frame into long format
+        long_m_df = m_df.melt(id_vars=['goResp', 'hitGoal', 'ids'],
+                              value_vars=['sampleAccprobHit_01', 'sampleAccprobHit_02', 'sampleAccprobHit_03',
+                                          'sampleAccprobHit_04', 'sampleAccprobHit_05', 'sampleAccprobHit_06'],
+                              var_name='sampleID', value_name='sampleAccprobHit')
+
+        for tWin in [1, 2]:
+            # define a panda data frame to store the values:
+            # intitialize the data frames
+            change_fw = pd.DataFrame()
+
+            # filter data from this tw
+            ctw_fw = long_m_df[long_m_df.sampleID == 'sampleAccprobHit_0{}'.format(tWin)]
+
+            # filter data from the next tw
+            ntw_fw = long_m_df[long_m_df.sampleID == 'sampleAccprobHit_0{}'.format(tWin + 1)]
+
+            # go through all probabilites in tw 1
+            for p_start in range(0, n_pwins - 1):
+
+                pst_low = window_prob[p_start]
+                pst_up = window_prob[p_start + 1]
+
+                # get all IDs that fullfill the trial
+                start_IDs_fw = \
+                ctw_fw.iloc[np.where((ctw_fw.sampleAccprobHit >= pst_low) & (ctw_fw.sampleAccprobHit < pst_up))[0]][
+                    'ids']
+
+                # go through all probabilities in the next time window
+                for p_end in range(0, n_pwins - 1):
+                    pend_low = window_prob[p_end]
+                    pend_up = window_prob[p_end + 1]
+
+                    # get all ids that fullfill the end probability requirement
+                    end_IDs_fw = ntw_fw.iloc[
+                        np.where((ntw_fw.sampleAccprobHit >= pend_low) & (ntw_fw.sampleAccprobHit < pend_up))[0]]['ids']
+
+                    # get the intercept between the two lists
+                    ID_list_fw = np.intersect1d(start_IDs_fw, end_IDs_fw)
+
+                    # filter the dataframe
+                    df_fw = long_m_df.loc[np.where(long_m_df.ids.isin(ID_list_fw))]
+
+                    change_fw.loc[window_prob[p_start], window_prob[p_end]] = np.mean(df_fw.goResp)
+
+            # plot
+            axs[1 + tWin, m_id].pcolormesh(change_fw, cmap=cmaps['g_cm'])
+            if m_id <= 2:
+                if tWin == 1:
+                    axs_predictionW1[m_id].pcolormesh(change_fw, cmap=cmaps['g_cm'])
+                else:
+                    axs_predictionW2[m_id].pcolormesh(change_fw, cmap=cmaps['g_cm'])
+
+    # Use absolute value for y-ticks
+    # change the axis ticks
+    ticks = axs[0, 0].get_yticks()
+    axs[0, 0].set_yticklabels([np.round(abs(tick / len(m_df)), 2) for tick in ticks])
+    axs[0, 3].legend()
+    axs[0, 0].set_ylabel('response proportion')
+    axs[0, 0].set_xlabel('response time in s')
+
+    axs[1, 3].legend()
+    axs[1, 0].set_ylabel('hit probability')
+    ticks = axs[1, 0].get_xticks()
+    axs[1, 0].set_xticklabels([tick / 10 for tick in ticks]);
+    axs[1, 0].set_yticklabels(np.linspace(0, 1, 5));
+
+    axs[1, 0].set_xlabel('time relative to go signal')
+
+    axs[2, 1].set_yticklabels(np.round(change_fw.columns, 2)[::2])
+    axs[2, 1].set_xticklabels(np.round(change_fw.index, 2)[[0, 2, 5, 7]]);
+    axs[2, 0].set_ylabel('hit probability at t')
+    axs[2, 0].set_xlabel('hit probability at t+1')
+
+    # set the axis for individual figures
+    # print(window_prob)
+
+    axs_predictionW1[0].set_yticks(np.arange(0, 10, 2))
+    axs_predictionW1[0].set_yticklabels(np.round(window_prob, 1)[::2])
+
+    axs_predictionW1[0].set_xticks(np.arange(0, 10, 2))
+    axs_predictionW1[0].set_xticklabels(np.round(window_prob, 1)[::2], rotation=45)
+    axs_predictionW1[1].set_xticklabels(np.round(window_prob, 1)[::2], rotation=45)
+    axs_predictionW1[2].set_xticklabels(np.round(window_prob, 1)[::2], rotation=45)
+
+    axs_predictionW2[0].set_yticks(np.arange(0, 10, 2))
+    axs_predictionW2[0].set_yticklabels(np.round(window_prob, 1)[::2])
+
+    axs_predictionW2[0].set_xticks(np.arange(0, 10, 2))
+    axs_predictionW2[0].set_xticklabels(np.round(window_prob, 1)[::2], rotation=45)
+    axs_predictionW2[1].set_xticklabels(np.round(window_prob, 1)[::2], rotation=45)
+    axs_predictionW2[2].set_xticklabels(np.round(window_prob, 1)[::2], rotation=45)
+
+    axs_predictionW1[0].set_ylabel('p[H] sample 1')
+    axs_predictionW1[0].set_xlabel('p[H] sample +1')
+
+    axs_predictionW2[0].set_ylabel('p[H] sample 2')
+    axs_predictionW2[0].set_xlabel('p[H] sample +1')
+
+    VSS2021_fig1.savefig(path_figs + 'ddmPredicitions_win1.pdf', bbox_inches='tight')
+    VSS2021_fig2.savefig(path_figs + 'ddmPredicitions_win2.pdf', bbox_inches='tight')
+
+    plt.tight_layout()
+
+    return None
