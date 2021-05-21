@@ -181,11 +181,11 @@ def predict_lm_response(estimates, predictor, data, sigmoid=True):
 
 def get_filled_vec(data, fillcol, group):
     """
-
-    :param data:
-    :param fillcol:
-    :param group:
-    :return:
+    Fills the nas in the data frame with the group means
+    :param data: the dataframe
+    :param fillcol: the column that contains nas
+    :param group: the groups for which the means should be computed
+    :return: the filled column
     """
 
     for g in np.unique(data[group]):
@@ -195,3 +195,18 @@ def get_filled_vec(data, fillcol, group):
         data.loc[idx, fillcol] = g_rt
 
     return data[fillcol]
+
+
+def get_distance(data, columns, relative_to):
+    """
+    computes the absolute absolute distance between two values and normalizes such that a 0-1 distribution has a mean of 0
+    and ranges between -1 and 1
+    :param data: the data frame to be manipulated
+    :param columns: the columns to be manipulated
+    :param relative_to: the column that holds the value relative tow which the distance will be computed
+    :return: the modified data frame
+    """
+    for column in columns:
+        data.loc[:, column] = 2 * (0.5 - abs(data[relative_to] - data[column]))
+
+    return data

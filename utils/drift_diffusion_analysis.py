@@ -12,11 +12,11 @@ path_models = './models/'
 
 def get_ddm_sample(data, subject, correct_name):
     """
-
-    :param data:
-    :param subject:
-    :param correct_name:
-    :return:
+    reduces the data frame and returns a ddm sample
+    :param data: the data frame
+    :param subject: the subject we want to fit
+    :param correct_name: the name of the column that holds the answer values
+    :return: the sample
     """
     # define the sample for the models
     ddm_df = data
@@ -183,11 +183,11 @@ ddm3 = Model(name='drift changes with every new sample',
 
 def fit_save_ddm(sample, ddm, name):
     """
-
-    :param sample:
-    :param ddm:
-    :param name:
-    :return:
+    checks if a ddm was already fitted, loads if yes, fits new one if not
+    :param sample: the sample generated with get_ddm_sample
+    :param ddm: the name of the ddm
+    :param name: the filename
+    :return: the fitted model
     """
 
     if os.path.exists(path_models + name):
@@ -215,11 +215,11 @@ def fit_save_ddm(sample, ddm, name):
 
 def get_ddm_responses(ddm, data, subject):
     """
-
-    :param ddm:
-    :param data:
-    :param subject:
-    :return:
+    generate responses to dataset based on a fitted ddm
+    :param ddm: the fitted ddm
+    :param data: the data to which we want to create responses
+    :param subject: the subject for which we want to subset data
+    :return: the data frame with predicted response columns
     """
 
     obs_file = data[data.subject == subject]
@@ -251,8 +251,8 @@ def get_ddm_responses(ddm, data, subject):
 
 def match_response_types(model_data):
     """
-
-    :param model_data:
+    matches correct/incorrect responses to the ground truth condition of a trial
+    :param model_data: the data with model-generated response predictions
     :return:
     """
     for ix in model_data.index:
